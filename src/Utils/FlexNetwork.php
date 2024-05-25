@@ -76,8 +76,5 @@ class FlexNetwork extends Network {
         $pre = strlen($hex) % 2 == 0 ? '' : '0';
         return $pre . $hex;
     }
-    
-    
-    
 }
 

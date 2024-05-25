@@ -328,7 +328,6 @@ class WalletDerive
             case 'auto': break;  // use automatic detection based on key_type
             default:
                 throw new Exception('Invalid value for addr_type');
-                break;
         }
         
         // note: these calls are adapted from bitwasp slip132.php
