@@ -212,7 +212,7 @@ class WalletDerive
      * Determines key type (x,y,Y,z,Z) based on coin/network and a key.
      */
     private function getKeyTypeFromCoinAndKey($coin, $key) {
-        $nparams = $this->getNetworkParams($coin);
+//        $nparams = $this->getNetworkParams($coin);
         $prefix = substr($key, 0, 4);
 
         // Parse the key to obtain prefix bytes.

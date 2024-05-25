@@ -1,5 +1,7 @@
 <?php
 
+namespace Derive;
+
 require_once __DIR__ . '/vendor/autoload.php';
 
 use App\Utils\PathPresets;
@@ -17,7 +19,7 @@ class DeriveWrapper
 
             $key = $params['key'] ?? $walletDerive->mnemonicToKey($params['coin'], $params['mnemonic'], $params['key-type'], $params['mnemonic-pw']);
             return ['ok' => true, 'data' => $walletDerive->derive_keys($key)];
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
             return ['ok' => false, 'message' => $e->getMessage()];
         }
     }
@@ -33,7 +35,7 @@ class DeriveWrapper
         $mnemonic = $params['mnemonic'] ?? null;
 
         if( !$key && !$mnemonic && !$params['gen-key']) {
-            throw new Exception( "--key or --mnemonic or --gen-key must be specified." );
+            throw new \Exception( "--key or --mnemonic or --gen-key must be specified." );
         }
 
         $params['mnemonic-pw'] = $params['mnemonic-pw'] ?? null;
@@ -42,18 +44,18 @@ class DeriveWrapper
         $allowed_addr_type = ['legacy', 'p2sh-segwit', 'bech32', 'auto'];
 
         if(!in_array($params['addr-type'], $allowed_addr_type)) {
-            throw new Exception(sprintf("--addr-type must be one of: [%s]", implode('|', $allowed_addr_type)));
+            throw new \Exception(sprintf("--addr-type must be one of: [%s]", implode('|', $allowed_addr_type)));
         }
 
         $type = $params['key-type'] ?? 'x';
         if(!in_array($type, ['x', 'y', 'z'] ) ) {
-            throw new Exception( "--key-type must be one of: " . implode(',', ['x', 'y', 'z']));
+            throw new \Exception( "--key-type must be one of: " . implode(',', ['x', 'y', 'z']));
         }
 
         $params['key-type'] = $type;
 
         if(isset($params['path']) && isset($params['preset'])) {
-            throw new Exception ("--path and --preset are mutually exclusive");
+            throw new \Exception ("--path and --preset are mutually exclusive");
         }
 
         if(isset($params['preset'])) {
@@ -63,25 +65,25 @@ class DeriveWrapper
 
         if(isset($params['path'])) {
             if(!preg_match('/[m\d]/', $params['path'][0]) ) {
-                throw new Exception( "path parameter is invalid.  It should begin with m or an integer number.");
+                throw new \Exception( "path parameter is invalid.  It should begin with m or an integer number.");
             }
             if(!preg_match("#^[/\dxcva']*$#", @substr($params['path'], 1) ) ) {
-                throw new Exception( "path parameter is invalid.  It should begin with m or an integer and contain only [0-9'/xcva]");
+                throw new \Exception( "path parameter is invalid.  It should begin with m or an integer and contain only [0-9'/xcva]");
             }
             if(preg_match('#//#', $params['path']) ) {
-                throw new Exception( "path parameter is invalid.  It must not contain '//'");
+                throw new \Exception( "path parameter is invalid.  It must not contain '//'");
             }
             if(preg_match("#/.*x.*x#", $params['path']) ) {
-                throw new Exception( "path parameter is invalid. x may only be used once");
+                throw new \Exception( "path parameter is invalid. x may only be used once");
             }
             if(preg_match("#/.*y.*y#", $params['path']) ) {
-                throw new Exception( "path parameter is invalid. y may only be used once");
+                throw new \Exception( "path parameter is invalid. y may only be used once");
             }
             if(preg_match("#/'#", $params['path']) ) {
-                throw new Exception( "path parameter is invalid. single-quote must follow an integer");
+                throw new \Exception( "path parameter is invalid. single-quote must follow an integer");
             }
             if(preg_match("#''#", $params['path']) ) {
-                throw new Exception( "path parameter is invalid. It must not contain \"''\"");
+                throw new \Exception( "path parameter is invalid. It must not contain \"''\"");
             }
             $params['path'] = rtrim($params['path'], '/');  // trim any trailing path separator.
         } else {
@@ -100,7 +102,7 @@ class DeriveWrapper
         $allowed = [12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 45, 48];
 
         if(!in_array($gen_words, $allowed)) {
-            throw new Exception("--gen-words must be one of " . implode(', ', $allowed));
+            throw new \Exception("--gen-words must be one of " . implode(', ', $allowed));
         }
         $params['gen-words'] = $gen_words;
 
