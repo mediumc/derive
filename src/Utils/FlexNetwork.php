@@ -17,7 +17,7 @@ class FlexNetwork extends Network {
     
     function __construct($coin) {
         $network = 'main';
-        if(strstr($coin, '-')) {
+        if(str_contains($coin, '-')) {
             list($coin, $network) = explode('-', $coin);
         }
         

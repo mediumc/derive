@@ -1,13 +1,6 @@
 <?php
-/**
- * Created by PhpStorm.
- * User: massi
- * Date: 18-4-23
- * Time: 下午12:45
- */
 
 namespace App\Utils;
-
 
 use BitWasp\Bitcoin\Network\Network;
 use BitWasp\Bitcoin\Network\NetworkFactory;

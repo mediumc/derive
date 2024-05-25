@@ -3,13 +3,6 @@
 namespace App\Utils;
 
 use \Exception;
-
-/**
- * Bip32 Path Presets for various classes.
- * Resources:
- *   https://bitcoin.stackexchange.com/questions/78993/default-derivation-paths
- */
-
  
 class PathPresets {
     
@@ -20,11 +13,11 @@ class PathPresets {
         }
         
         $class = 'App\Utils\PathPreset_' . $preset_id;
-        $c = new $class();        
-    return $c;
+        return new $class();
     }
     
-    static function getAllPresetID() {
+    static function getAllPresetID(): ?array
+    {
         
         static $id_list = null;
         
@@ -32,7 +25,7 @@ class PathPresets {
             $id_list = [];
             $declared = get_declared_classes();
             foreach($declared as $d) {
-                if(strpos($d, 'App\Utils\PathPreset_') === 0) {
+                if(str_starts_with($d, 'App\Utils\PathPreset_')) {
                     $id = str_replace('App\Utils\PathPreset_', '', $d);
                     $id_list[] = $id;
                 }
@@ -42,9 +35,8 @@ class PathPresets {
         return $id_list;
     }
     
-    static function getAllPresets() {
-        
-        
+    static function getAllPresets(): array
+    {
         $all = self::getAllPresetID();
         $presets = [];
         
@@ -55,12 +47,12 @@ class PathPresets {
     }
 }
 
-interface PathPreset {
-    public function getID() : string;
-    public function getPath() : string;
-    public function getWalletSoftwareName() : string;
-    public function getWalletSoftwareVersionInfo() : string;
-}
+//interface PathPreset {
+//    public function getID() : string;
+//    public function getPath() : string;
+//    public function getWalletSoftwareName() : string;
+//    public function getWalletSoftwareVersionInfo() : string;
+//}
 
 class PathPreset_ledgerlive {
     
