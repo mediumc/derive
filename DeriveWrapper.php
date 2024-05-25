@@ -7,35 +7,22 @@ use App\WalletDerive;
 
 class DeriveWrapper
 {
-    public function derive(array $params): string
+    public static function derive(array $params): array
     {
         ini_set('memory_limit', -1);
 
         try {
-            $params = $this->collectParams($params);
-
+            $params = static::collectParams($params);
             $walletDerive = new WalletDerive($params);
 
             $key = $params['key'] ?? $walletDerive->mnemonicToKey($params['coin'], $params['mnemonic'], $params['key-type'], $params['mnemonic-pw']);
-            $array = $walletDerive->derive_keys($key);
-
-            return $this->json(true, $array);
+            return ['ok' => true, 'data' => $walletDerive->derive_keys($key)];
         } catch (Exception $e) {
-            return $this->json(false, [], $e->getMessage());
+            return ['ok' => false, 'message' => $e->getMessage()];
         }
     }
 
-    private function json(bool $status, array $data = [], string $message = ''): string
-    {
-        $arr = ['ok' => $status];
-
-        if ($message) $arr['message'] = $message;
-        if (count($data)) $arr['data'] = $data;
-
-        return json_encode($arr);
-    }
-
-    private function collectParams(array $params): array
+    private static function collectParams(array $params): array
     {
         $params['cols'] = $arr['cols'] ?? 'all';
         $params['coin'] = $params['coin'] ?? 'btc';

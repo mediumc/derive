@@ -7,6 +7,3 @@ Simple example of using the library
 	    'key' => 'xpub...dwUR',
 	    'numderive' => 1
     ]);
-
-## Result
-The response always comes in JSON and has parameters ok, data - in case of successful completion, or ok, message - in case of an error.
