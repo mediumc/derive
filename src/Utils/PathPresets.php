@@ -12,7 +12,7 @@ class PathPresets {
             throw new Exception("Invalid preset identifier");
         }
         
-        $class = 'App\Utils\PathPreset_' . $preset_id;
+        $class = 'Derive\Utils\PathPreset_' . $preset_id;
         return new $class();
     }
     
@@ -25,8 +25,8 @@ class PathPresets {
             $id_list = [];
             $declared = get_declared_classes();
             foreach($declared as $d) {
-                if(str_starts_with($d, 'App\Utils\PathPreset_')) {
-                    $id = str_replace('App\Utils\PathPreset_', '', $d);
+                if(str_starts_with($d, 'Derive\Utils\PathPreset_')) {
+                    $id = str_replace('Derive\Utils\PathPreset_', '', $d);
                     $id_list[] = $id;
                 }
             }
@@ -57,7 +57,7 @@ class PathPresets {
 class PathPreset_ledgerlive {
     
     public function getID() : string {
-        return str_replace('App\Utils\PathPreset_', '', get_class($this));
+        return str_replace('Derive\Utils\PathPreset_', '', get_class($this));
     }
         
     public function getPath() : string {
@@ -80,7 +80,7 @@ class PathPreset_ledgerlive {
 class PathPreset_bitcoincore {
     
     public function getID() : string {
-        return str_replace('App\Utils\PathPreset_', '', get_class($this));
+        return str_replace('Derive\Utils\PathPreset_', '', get_class($this));
     }
 
     public function getPath() : string {
@@ -103,7 +103,7 @@ class PathPreset_bitcoincore {
 class PathPreset_trezor {
     
     public function getID() : string {
-        return str_replace('App\Utils\PathPreset_', '', get_class($this));
+        return str_replace('Derive\Utils\PathPreset_', '', get_class($this));
     }
 
     public function getPath() : string {
@@ -126,7 +126,7 @@ class PathPreset_trezor {
 class PathPreset_bip32 {
     
     public function getID() : string {
-        return str_replace('App\Utils\PathPreset_', '', get_class($this));
+        return str_replace('Derive\Utils\PathPreset_', '', get_class($this));
     }
 
     public function getPath() : string {
@@ -149,7 +149,7 @@ class PathPreset_bip32 {
 class PathPreset_bip44 {
     
     public function getID() : string {
-        return str_replace('App\Utils\PathPreset_', '', get_class($this));
+        return str_replace('Derive\Utils\PathPreset_', '', get_class($this));
     }
 
     public function getPath() : string {
@@ -172,7 +172,7 @@ class PathPreset_bip44 {
 class PathPreset_bip49 {
     
     public function getID() : string {
-        return str_replace('App\Utils\PathPreset_', '', get_class($this));
+        return str_replace('Derive\Utils\PathPreset_', '', get_class($this));
     }
 
     public function getPath() : string {
@@ -196,7 +196,7 @@ class PathPreset_bip49 {
 class PathPreset_bip84 {
     
     public function getID() : string {
-        return str_replace('App\Utils\PathPreset_', '', get_class($this));
+        return str_replace('Derive\Utils\PathPreset_', '', get_class($this));
     }
 
     public function getPath() : string {
@@ -220,7 +220,7 @@ class PathPreset_bip84 {
 class PathPreset_bither {
     
     public function getID() : string {
-        return str_replace('App\Utils\PathPreset_', '', get_class($this));
+        return str_replace('Derive\Utils\PathPreset_', '', get_class($this));
     }
 
     public function getPath() : string {
@@ -247,7 +247,7 @@ class PathPreset_bither {
 class PathPreset_copay_legacy {
     
     public function getID() : string {
-        return str_replace('App\Utils\PathPreset_', '', get_class($this));
+        return str_replace('Derive\Utils\PathPreset_', '', get_class($this));
     }
 
     public function getPath() : string {
@@ -270,7 +270,7 @@ class PathPreset_copay_legacy {
 class PathPreset_copay {
     
     public function getID() : string {
-        return str_replace('App\Utils\PathPreset_', '', get_class($this));
+        return str_replace('Derive\Utils\PathPreset_', '', get_class($this));
     }
 
     public function getPath() : string {
@@ -293,7 +293,7 @@ class PathPreset_copay {
 class PathPreset_copay_hardware_multisig {
     
     public function getID() : string {
-        return str_replace('App\Utils\PathPreset_', '', get_class($this));
+        return str_replace('Derive\Utils\PathPreset_', '', get_class($this));
     }
 
     public function getPath() : string {
@@ -317,7 +317,7 @@ class PathPreset_copay_hardware_multisig {
 class PathPreset_mycelium {
     
     public function getID() : string {
-        return str_replace('App\Utils\PathPreset_', '', get_class($this));
+        return str_replace('Derive\Utils\PathPreset_', '', get_class($this));
     }
 
     public function getPath() : string {
@@ -340,7 +340,7 @@ class PathPreset_mycelium {
 class PathPreset_jaxx {
     
     public function getID() : string {
-        return str_replace('App\Utils\PathPreset_', '', get_class($this));
+        return str_replace('Derive\Utils\PathPreset_', '', get_class($this));
     }
 
     public function getPath() : string {
@@ -364,7 +364,7 @@ class PathPreset_jaxx {
 class PathPreset_electrum {
     
     public function getID() : string {
-        return str_replace('App\Utils\PathPreset_', '', get_class($this));
+        return str_replace('Derive\Utils\PathPreset_', '', get_class($this));
     }
 
     public function getPath() : string {
@@ -387,7 +387,7 @@ class PathPreset_electrum {
 class PathPreset_electrum_multi {
     
     public function getID() : string {
-        return str_replace('App\Utils\PathPreset_', '', get_class($this));
+        return str_replace('Derive\Utils\PathPreset_', '', get_class($this));
     }
 
     public function getPath() : string {
@@ -410,7 +410,7 @@ class PathPreset_electrum_multi {
 class PathPreset_wasabi {
     
     public function getID() : string {
-        return str_replace('App\Utils\PathPreset_', '', get_class($this));
+        return str_replace('Derive\Utils\PathPreset_', '', get_class($this));
     }
 
     public function getPath() : string {
@@ -433,7 +433,7 @@ class PathPreset_wasabi {
 class PathPreset_samourai {
     
     public function getID() : string {
-        return str_replace('App\Utils\PathPreset_', '', get_class($this));
+        return str_replace('Derive\Utils\PathPreset_', '', get_class($this));
     }
 
     public function getPath() : string {
@@ -456,7 +456,7 @@ class PathPreset_samourai {
 class PathPreset_samourai_p2sh {
     
     public function getID() : string {
-        return str_replace('App\Utils\PathPreset_', '', get_class($this));
+        return str_replace('Derive\Utils\PathPreset_', '', get_class($this));
     }
 
     public function getPath() : string {
@@ -480,7 +480,7 @@ class PathPreset_samourai_p2sh {
 class PathPreset_samourai_bech32 {
     
     public function getID() : string {
-        return str_replace('App\Utils\PathPreset_', '', get_class($this));
+        return str_replace('Derive\Utils\PathPreset_', '', get_class($this));
     }
 
     public function getPath() : string {
@@ -504,7 +504,7 @@ class PathPreset_samourai_bech32 {
 class PathPreset_breadwallet {
     
     public function getID() : string {
-        return str_replace('App\Utils\PathPreset_', '', get_class($this));
+        return str_replace('Derive\Utils\PathPreset_', '', get_class($this));
     }
 
     public function getPath() : string {
@@ -527,7 +527,7 @@ class PathPreset_breadwallet {
 class PathPreset_hive {
     
     public function getID() : string {
-        return str_replace('App\Utils\PathPreset_', '', get_class($this));
+        return str_replace('Derive\Utils\PathPreset_', '', get_class($this));
     }
 
     public function getPath() : string {
@@ -550,7 +550,7 @@ class PathPreset_hive {
 class PathPreset_multibit_hd {
     
     public function getID() : string {
-        return str_replace('App\Utils\PathPreset_', '', get_class($this));
+        return str_replace('Derive\Utils\PathPreset_', '', get_class($this));
     }
 
     public function getPath() : string {
@@ -573,7 +573,7 @@ class PathPreset_multibit_hd {
 class PathPreset_multibit_hd_44 {
     
     public function getID() : string {
-        return str_replace('App\Utils\PathPreset_', '', get_class($this));
+        return str_replace('Derive\Utils\PathPreset_', '', get_class($this));
     }
 
     public function getPath() : string {
@@ -597,7 +597,7 @@ class PathPreset_multibit_hd_44 {
 class PathPreset_coinomi {
     
     public function getID() : string {
-        return str_replace('App\Utils\PathPreset_', '', get_class($this));
+        return str_replace('Derive\Utils\PathPreset_', '', get_class($this));
     }
 
     public function getPath() : string {
@@ -620,7 +620,7 @@ class PathPreset_coinomi {
 class PathPreset_coinomi_p2sh {
     
     public function getID() : string {
-        return str_replace('App\Utils\PathPreset_', '', get_class($this));
+        return str_replace('Derive\Utils\PathPreset_', '', get_class($this));
     }
 
     public function getPath() : string {
@@ -644,7 +644,7 @@ class PathPreset_coinomi_p2sh {
 class PathPreset_coinomi_bech32 {
     
     public function getID() : string {
-        return str_replace('App\Utils\PathPreset_', '', get_class($this));
+        return str_replace('Derive\Utils\PathPreset_', '', get_class($this));
     }
 
     public function getPath() : string {
