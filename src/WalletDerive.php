@@ -2,7 +2,6 @@
 
 
 namespace Derive;
-require_once __DIR__ . '/../vendor/autoload.php';
 
 use BitWasp\Bitcoin\Address\AddressCreator;
 use BitWasp\Bitcoin\Base58;
@@ -97,16 +96,16 @@ class WalletDerive
             }
         }
         if (!$iter_part) {
-            $iter_part = count($pparts);
+//            $iter_part = count($pparts);
             $pparts[] = 'x';
         }
         $path_normal = implode('/', $pparts);
         $path_mask = str_replace('x', '%d', $path_normal);
-        if (strpos($path_mask, 'c') !== false) {
+        if (str_contains($path_mask, 'c')) {
             if (is_int($bip44_coin)) {
                 $path_mask = str_replace('c', $bip44_coin, $path_mask);  // auto-insert bip44 coin-type if requested via 'c'.
             } else {
-                throw new Exception("'c' is present in path but Bip44 coin type is undefined for $coin");
+                throw new \Exception("'c' is present in path but Bip44 coin type is undefined for $coin");
             }
         }
         $path_mask = str_replace('v', @$params['path-change'], $path_mask);
@@ -157,7 +156,7 @@ class WalletDerive
     {
 
         if (!$this->networkSupportsKeyType($network, $key_type, $coin)) {
-            throw new Exception("$key_type extended keys are not supported for $coin");
+            throw new \Exception("$key_type extended keys are not supported for $coin");
         }
 
         $params = $this->getParams();
@@ -177,7 +176,7 @@ class WalletDerive
             $pubkeyhash = $key->getPublicKey()->getPubKeyHash()->getHex();
             $xpub = $this->toExtendedKey($coin, $key->withoutPrivateKey(), $network, $key_type);
         } else {
-            throw new Exception("multisig keys not supported");
+            throw new \Exception("multisig keys not supported");
         }
 
         $addrs[] = array('xprv' => $xprv,
@@ -228,7 +227,7 @@ class WalletDerive
                 return $kt[0];
             }
         }
-        throw new Exception("Keytype not found for $coin/$prefix");
+        throw new \Exception("Keytype not found for $coin/$prefix");
     }
 
     private function getKeyTypeFromParams()
@@ -304,7 +303,7 @@ class WalletDerive
         if ($key_type == 'z') {
             try {
                 $network->getSegwitBech32Prefix();
-            } catch (Exception $e) {
+            } catch (\Exception $e) {
                 return false;
             }
         }
@@ -331,7 +330,7 @@ class WalletDerive
             case 'auto':
                 break;  // use automatic detection based on key_type
             default:
-                throw new Exception('Invalid value for addr_type');
+                throw new \Exception('Invalid value for addr_type');
         }
 
         // note: these calls are adapted from bitwasp slip132.php
@@ -355,7 +354,7 @@ class WalletDerive
                 $factory = $helper->getP2wshFactory($helper->getP2pkhFactory());
                 break;
             default:
-                throw new Exception("Unknown key type: $key_type");
+                throw new \Exception("Unknown key type: $key_type");
         }
         return $factory;
     }
@@ -389,14 +388,14 @@ class WalletDerive
             case 'auto':
                 break;  // use automatic detection based on key_type
             default:
-                throw new Exception('Invalid value for addr_type');
+                throw new \Exception('Invalid value for addr_type');
         }
 
         return match ($key_type) {
             'x' => $slip132->p2pkh($coinPrefixes),
             'y' => $slip132->p2shP2wpkh($coinPrefixes),
             'z' => $slip132->p2wpkh($coinPrefixes),
-            default => throw new Exception("Unknown key type: $key_type"),
+            default => throw new \Exception("Unknown key type: $key_type"),
         };
     }
 
