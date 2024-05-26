@@ -2,10 +2,7 @@
 
 namespace Derive;
 
-require_once __DIR__ . '/vendor/autoload.php';
-
-use App\Utils\PathPresets;
-use App\WalletDerive;
+use Derive\Utils\PathPresets;
 
 class DeriveWrapper
 {

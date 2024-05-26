@@ -1,9 +1,9 @@
 <?php
 
-namespace App\Utils;
+namespace Derive\Utils;
 
-use \Exception;
- 
+use Exception;
+
 class PathPresets {
     
     static function getPreset($preset_id) {

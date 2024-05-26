@@ -1,9 +1,8 @@
 <?php
 
-namespace App\Utils;
+namespace Derive\Utils;
 
 use BitWasp\Bitcoin\Network\Network;
-use BitWasp\Bitcoin\Network\NetworkFactory;
 use CoinParams\CoinParams;
 
 class NetworkCoinFactory extends Network

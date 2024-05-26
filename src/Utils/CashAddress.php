@@ -1,8 +1,10 @@
 <?php
 
-namespace App\Utils;
+namespace Derive\Utils;
 
+//use Derive\Utils\CashAddressException;
 use BitWasp\Bech32;
+use function BitWasp\Bech32;
 
 class CashAddress
 {
@@ -17,7 +19,7 @@ class CashAddress
 
         for ($x = 0; $x < strlen($oldAddress); $x++) {
             if (!array_key_exists($oldAddress[$x], $alphabetMap)) {
-                throw new CashAddressException('Unexpected character in address!');
+                throw new \Exception('Unexpected character in address!');
             }
             $value = $alphabetMap[$oldAddress[$x]];
             $carry = $value;

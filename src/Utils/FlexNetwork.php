@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Utils;
+namespace Derive\Utils;
 
 use BitWasp\Bitcoin\Network\Network;
 use BitWasp\Bitcoin\Script\ScriptType;

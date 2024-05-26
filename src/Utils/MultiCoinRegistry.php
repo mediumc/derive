@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Utils;
+namespace Derive\Utils;
 
 use BitWasp\Bitcoin\Key\Deterministic\Slip132\PrefixRegistry;
 use BitWasp\Bitcoin\Script\ScriptType;
