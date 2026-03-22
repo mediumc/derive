@@ -67,12 +67,28 @@ class DeriveWrapper
             $derivationKey = $params['key']
                 ?? $walletDerive->mnemonicToKey($params['coin'], $params['mnemonic'], $params['keyType'], $params['mnemonicPw']);
 
-            $result = ['ok' => true, 'data' => $walletDerive->deriveKeys($derivationKey)];
+            $data = $walletDerive->deriveKeys($derivationKey);
+            $data = self::filterColumns($data, $cols);
+            $result = ['ok' => true, 'data' => $data];
         } catch (\Exception $e) {
             $result = ['ok' => false, 'message' => $e->getMessage()];
         }
 
         return self::formatResult($result, $format);
+    }
+
+    private static function filterColumns(array $rows, string $cols): array
+    {
+        if ($cols === 'all') {
+            return $rows;
+        }
+
+        $allowed = array_map('trim', explode(',', $cols));
+
+        return array_map(
+            static fn(array $row): array => array_intersect_key($row, array_flip($allowed)),
+            $rows,
+        );
     }
 
     private static function formatResult(array $result, string $format): array|string
