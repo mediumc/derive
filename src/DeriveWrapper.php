@@ -1,108 +1,191 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Derive;
 
 use Derive\Utils\PathPresets;
 
 class DeriveWrapper
 {
-    public static function derive(array $params): array
-    {
-        ini_set('memory_limit', -1);
+    private const ALLOWED_ADDR_TYPES = ['legacy', 'p2sh-segwit', 'bech32', 'auto'];
+    private const ALLOWED_KEY_TYPES = ['x', 'y', 'z'];
+    private const ALLOWED_FORMATS = ['array', 'json', 'jsonpretty'];
+    private const ALLOWED_GEN_WORDS = [12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 45, 48];
 
+    public static function derive(
+        ?string $key = null,
+        ?string $mnemonic = null,
+        ?string $mnemonicPw = null,
+        string  $coin = 'btc',
+        string  $keyType = 'x',
+        string  $addrType = 'auto',
+        ?string $path = null,
+        ?string $preset = null,
+        int     $numderive = 10,
+        int     $startindex = 0,
+        string  $cols = 'all',
+        string  $format = 'array',
+        string  $bchFormat = 'cash',
+        ?string $altExtended = null,
+        bool    $includeroot = false,
+        bool    $pathChange = false,
+        int     $pathAccount = 0,
+        bool    $genKey = false,
+        int     $genWords = 24,
+    ): array|string {
         try {
-            $params = static::collectParams($params);
+            if (!in_array($format, self::ALLOWED_FORMATS, true)) {
+                throw new \InvalidArgumentException(
+                    sprintf('format must be one of: [%s]', implode('|', self::ALLOWED_FORMATS))
+                );
+            }
+
+            $params = self::validateParams(
+                key: $key,
+                mnemonic: $mnemonic,
+                mnemonicPw: $mnemonicPw,
+                coin: $coin,
+                keyType: $keyType,
+                addrType: $addrType,
+                path: $path,
+                preset: $preset,
+                numderive: $numderive,
+                startindex: $startindex,
+                cols: $cols,
+                bchFormat: $bchFormat,
+                altExtended: $altExtended,
+                includeroot: $includeroot,
+                pathChange: $pathChange,
+                pathAccount: $pathAccount,
+                genKey: $genKey,
+                genWords: $genWords,
+            );
+
             $walletDerive = new WalletDerive($params);
 
-            $key = $params['key'] ?? $walletDerive->mnemonicToKey($params['coin'], $params['mnemonic'], $params['key-type'], $params['mnemonic-pw']);
-            return ['ok' => true, 'data' => $walletDerive->derive_keys($key)];
+            $derivationKey = $params['key']
+                ?? $walletDerive->mnemonicToKey($params['coin'], $params['mnemonic'], $params['keyType'], $params['mnemonicPw']);
+
+            $result = ['ok' => true, 'data' => $walletDerive->deriveKeys($derivationKey)];
         } catch (\Exception $e) {
-            return ['ok' => false, 'message' => $e->getMessage()];
+            $result = ['ok' => false, 'message' => $e->getMessage()];
         }
+
+        return self::formatResult($result, $format);
     }
 
-    private static function collectParams(array $params): array
+    private static function formatResult(array $result, string $format): array|string
     {
-        $params['cols'] = $arr['cols'] ?? 'all';
-        $params['coin'] = $params['coin'] ?? 'btc';
+        return match ($format) {
+            'json' => json_encode($result, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
+            'jsonpretty' => json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
+            default => $result,
+        };
+    }
 
-        $params['gen-key'] = isset($params['gen-key']) || isset($params['gen-words']);
-        $params['gen-key-all'] = isset($params['gen-key-all']);  // hidden param, for the truly worthy who read the code.
-        $key = $params['key'] ?? null;
-        $mnemonic = $params['mnemonic'] ?? null;
-
-        if( !$key && !$mnemonic && !$params['gen-key']) {
-            throw new \Exception( "--key or --mnemonic or --gen-key must be specified." );
+    private static function validateParams(
+        ?string $key,
+        ?string $mnemonic,
+        ?string $mnemonicPw,
+        string  $coin,
+        string  $keyType,
+        string  $addrType,
+        ?string $path,
+        ?string $preset,
+        int     $numderive,
+        int     $startindex,
+        string  $cols,
+        string  $bchFormat,
+        ?string $altExtended,
+        bool    $includeroot,
+        bool    $pathChange,
+        int     $pathAccount,
+        bool    $genKey,
+        int     $genWords,
+    ): array {
+        if (!$key && !$mnemonic && !$genKey) {
+            throw new \InvalidArgumentException('key, mnemonic, or genKey must be specified.');
         }
 
-        $params['mnemonic-pw'] = $params['mnemonic-pw'] ?? null;
-
-        $params['addr-type'] = $params['addr-type'] ?? 'auto';
-        $allowed_addr_type = ['legacy', 'p2sh-segwit', 'bech32', 'auto'];
-
-        if(!in_array($params['addr-type'], $allowed_addr_type)) {
-            throw new \Exception(sprintf("--addr-type must be one of: [%s]", implode('|', $allowed_addr_type)));
+        if (!in_array($addrType, self::ALLOWED_ADDR_TYPES, true)) {
+            throw new \InvalidArgumentException(
+                sprintf('addrType must be one of: [%s]', implode('|', self::ALLOWED_ADDR_TYPES))
+            );
         }
 
-        $type = $params['key-type'] ?? 'x';
-        if(!in_array($type, ['x', 'y', 'z'] ) ) {
-            throw new \Exception( "--key-type must be one of: " . implode(',', ['x', 'y', 'z']));
+        if (!in_array($keyType, self::ALLOWED_KEY_TYPES, true)) {
+            throw new \InvalidArgumentException(
+                sprintf('keyType must be one of: [%s]', implode(',', self::ALLOWED_KEY_TYPES))
+            );
         }
 
-        $params['key-type'] = $type;
-
-        if(isset($params['path']) && isset($params['preset'])) {
-            throw new \Exception ("--path and --preset are mutually exclusive");
+        if ($path !== null && $preset !== null) {
+            throw new \InvalidArgumentException('path and preset are mutually exclusive');
         }
 
-        if(isset($params['preset'])) {
-            $preset = PathPresets::getPreset($params['preset']);
-            $params['path'] = $preset->getPath();
+        $resolvedPath = $path;
+        if ($preset !== null) {
+            $presetObj = PathPresets::getPreset($preset);
+            $resolvedPath = $presetObj->getPath();
         }
 
-        if(isset($params['path'])) {
-            if(!preg_match('/[m\d]/', $params['path'][0]) ) {
-                throw new \Exception( "path parameter is invalid.  It should begin with m or an integer number.");
-            }
-            if(!preg_match("#^[/\dxcva']*$#", @substr($params['path'], 1) ) ) {
-                throw new \Exception( "path parameter is invalid.  It should begin with m or an integer and contain only [0-9'/xcva]");
-            }
-            if(preg_match('#//#', $params['path']) ) {
-                throw new \Exception( "path parameter is invalid.  It must not contain '//'");
-            }
-            if(preg_match("#/.*x.*x#", $params['path']) ) {
-                throw new \Exception( "path parameter is invalid. x may only be used once");
-            }
-            if(preg_match("#/.*y.*y#", $params['path']) ) {
-                throw new \Exception( "path parameter is invalid. y may only be used once");
-            }
-            if(preg_match("#/'#", $params['path']) ) {
-                throw new \Exception( "path parameter is invalid. single-quote must follow an integer");
-            }
-            if(preg_match("#''#", $params['path']) ) {
-                throw new \Exception( "path parameter is invalid. It must not contain \"''\"");
-            }
-            $params['path'] = rtrim($params['path'], '/');  // trim any trailing path separator.
+        if ($resolvedPath !== null) {
+            self::validatePath($resolvedPath);
+            $resolvedPath = rtrim($resolvedPath, '/');
         } else {
-            $params['path'] = 'm';
+            $resolvedPath = 'm';
         }
 
-        $params['bch-format'] = $params['bch-format'] ?? 'cash';
-        $params['numderive'] = $params['numderive'] ?? 10;
-        $params['alt-extended'] = $params['alt-extended'] ?? null;
-        $params['startindex'] = $params['startindex'] ?? 0;
-        $params['includeroot'] = isset($params['includeroot'] );
-        $params['path-change'] = isset($params['path-change']) ? 1 : 0;
-        $params['path-account'] = $params['path-account'] ?? 0;
-
-        $gen_words = (int)($params['gen-words'] ?? 24);
-        $allowed = [12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 45, 48];
-
-        if(!in_array($gen_words, $allowed)) {
-            throw new \Exception("--gen-words must be one of " . implode(', ', $allowed));
+        if (!in_array($genWords, self::ALLOWED_GEN_WORDS, true)) {
+            throw new \InvalidArgumentException(
+                'genWords must be one of: ' . implode(', ', self::ALLOWED_GEN_WORDS)
+            );
         }
-        $params['gen-words'] = $gen_words;
 
-        return $params;
+        return [
+            'key' => $key,
+            'mnemonic' => $mnemonic,
+            'mnemonicPw' => $mnemonicPw,
+            'coin' => $coin,
+            'keyType' => $keyType,
+            'addrType' => $addrType,
+            'path' => $resolvedPath,
+            'numderive' => $numderive,
+            'startindex' => $startindex,
+            'cols' => $cols,
+            'bchFormat' => $bchFormat,
+            'altExtended' => $altExtended,
+            'includeroot' => $includeroot,
+            'pathChange' => $pathChange ? 1 : 0,
+            'pathAccount' => $pathAccount,
+            'genKey' => $genKey,
+            'genWords' => $genWords,
+        ];
+    }
+
+    private static function validatePath(string $path): void
+    {
+        if (!preg_match('/^[m\d]/', $path)) {
+            throw new \InvalidArgumentException('path is invalid. It should begin with m or an integer number.');
+        }
+        if (!preg_match("#^[/\dxcva']*$#", substr($path, 1))) {
+            throw new \InvalidArgumentException("path is invalid. It should contain only [0-9'/xcva]");
+        }
+        if (str_contains($path, '//')) {
+            throw new \InvalidArgumentException("path is invalid. It must not contain '//'");
+        }
+        if (preg_match("#/.*x.*x#", $path)) {
+            throw new \InvalidArgumentException('path is invalid. x may only be used once');
+        }
+        if (preg_match("#/.*y.*y#", $path)) {
+            throw new \InvalidArgumentException('path is invalid. y may only be used once');
+        }
+        if (preg_match("#/'#", $path)) {
+            throw new \InvalidArgumentException('path is invalid. single-quote must follow an integer');
+        }
+        if (str_contains($path, "''")) {
+            throw new \InvalidArgumentException("path is invalid. It must not contain \"''\"");
+        }
     }
 }

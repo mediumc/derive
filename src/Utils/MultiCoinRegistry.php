@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Derive\Utils;
 
 use BitWasp\Bitcoin\Key\Deterministic\Slip132\PrefixRegistry;
@@ -7,90 +9,71 @@ use BitWasp\Bitcoin\Script\ScriptType;
 
 class MultiCoinRegistry extends PrefixRegistry
 {
-    private $key_type_map;
+    /** @var array<string, mixed> */
+    private array $keyTypeMap;
 
     /**
-     * extended_map should look like:
-     * {
-     *    "xpub": {
-     *      "public": "0xXXXXXXXX",
-     *      "private": "0xXXXXXXXX"
-     *    },
-     *    "ypub": {
-     *      "public": "0xXXXXXXXX",
-     *      "private": "0xXXXXXXXX"
-     *    },
-     *    "zpub": {
-     *      "public": "0xXXXXXXXX",
-     *      "private": "0xXXXXXXXX"
-     *    },
-     *    "Ypub": {
-     *      "public": "0xXXXXXXXX",
-     *      "private": "0xXXXXXXXX"
-     *    },
-     *    "Zpub": {
-     *      "public": "0xXXXXXXXX",
-     *      "private": "0xXXXXXXXX"
-     *    }
-     * }
+     * @param array<string, array{public: string, private: string}> $extendedMap
      */
-    public function __construct($extended_map)
+    public function __construct(array $extendedMap)
     {
-        $em = $extended_map;
         $map = [];
-        $t = [];
-        $x = @$em['xpub'];
-        $y = @$em['ypub'];
-        $Y = @$em['Ypub'];
-        $z = @$em['zpub'];
-        $Z = @$em['Zpub'];
-        
+        $x = $extendedMap['xpub'] ?? null;
+        $y = $extendedMap['ypub'] ?? null;
+        $Y = $extendedMap['Ypub'] ?? null;
+        $z = $extendedMap['zpub'] ?? null;
+        $Z = $extendedMap['Zpub'] ?? null;
+
         $st = [
-            'x'  => [ScriptType::P2PKH],
-            'X'  => [ScriptType::P2SH, ScriptType::P2PKH],   // p2pkh in p2sh (typically multisig).  normally in xpub instead.
-            'y'  => [ScriptType::P2SH, ScriptType::P2WKH],
-            'Y'  => [ScriptType::P2SH, ScriptType::P2WSH, ScriptType::P2PKH],
-            'z'  => [ScriptType::P2WKH],
-            'Z'  => [ScriptType::P2WSH, ScriptType::P2PKH],
+            'x' => [ScriptType::P2PKH],
+            'X' => [ScriptType::P2SH, ScriptType::P2PKH],
+            'y' => [ScriptType::P2SH, ScriptType::P2WKH],
+            'Y' => [ScriptType::P2SH, ScriptType::P2WSH, ScriptType::P2PKH],
+            'z' => [ScriptType::P2WKH],
+            'Z' => [ScriptType::P2WSH, ScriptType::P2PKH],
         ];
-        
-        // to indicate if each prefix is supported by this network or not.
-        $this->key_type_map = [
-            'x'  => $x,
-            'X'  => $x,   // p2pkh in p2sh (typically multisig).  normally in xpub instead.
-            'y'  => $y,
-            'Y'  => $Y,
-            'z'  => $z,
-            'Z'  => $Z,
+
+        $this->keyTypeMap = [
+            'x' => $x,
+            'X' => $x,
+            'y' => $y,
+            'Y' => $Y,
+            'z' => $z,
+            'Z' => $Z,
         ];
-        
-        $t[] = $this->v($x) ? [ [$x['private'],$x['public']], $st['x'] ] : null;
-        $t[] = $this->v($x) ? [ [$x['private'],$x['public']], $st['X'] ] : null;
-        $t[] = $this->v($y) ? [ [$y['private'],$y['public']], $st['y'] ] : null;
-        $t[] = $this->v($Y) ? [ [$Y['private'],$Y['public']], $st['Y'] ] : null;
-        $t[] = $this->v($z) ? [ [$z['private'],$z['public']], $st['z'] ] : null;
-        $t[] = $this->v($Z) ? [ [$Z['private'],$Z['public']], $st['Z'] ] : null;
-        
-        foreach ($t as $row) {
-            if(!$row) {
+
+        $entries = [
+            [$x, $st['x']],
+            [$x, $st['X']],
+            [$y, $st['y']],
+            [$Y, $st['Y']],
+            [$z, $st['z']],
+            [$Z, $st['Z']],
+        ];
+
+        foreach ($entries as [$prefixData, $scriptType]) {
+            if (!$this->hasValidPrefixes($prefixData)) {
                 continue;
             }
-            list ($prefixList, $scriptType) = $row;
-            foreach($prefixList as &$val) {
-                // Slip132\PrefixRegistry expects 8 byte hex values, without 0x prefix.
+            $prefixList = [$prefixData['private'], $prefixData['public']];
+            foreach ($prefixList as &$val) {
                 $val = str_replace('0x', '', $val);
             }
-            $type = implode("|", $scriptType);
+            unset($val);
+            $type = implode('|', $scriptType);
             $map[$type] = $prefixList;
         }
+
         parent::__construct($map);
     }
-    
-    private function v($kt) {
-        return @$kt['private'] && $kt['public']; 
+
+    private function hasValidPrefixes(mixed $data): bool
+    {
+        return is_array($data) && !empty($data['private']) && !empty($data['public']);
     }
-    
-    public function prefixBytesByKeyType($key_type) {
-        return @$this->key_type_map[$key_type];
+
+    public function prefixBytesByKeyType(string $keyType): mixed
+    {
+        return $this->keyTypeMap[$keyType] ?? null;
     }
 }

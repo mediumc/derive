@@ -3,7 +3,7 @@
     "description": "Library for obtaining bip32 addresses and private keys",
     "minimum-stability": "dev",
     "require": {
-        "php": ">=8",
+        "php": ">=8.2",
         "dan-da/texttable-php": "1.0.3",
         "dan-da/coinparams": "0.2.9",
         "olegabr/keccak": "1.0.4",

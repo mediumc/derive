@@ -1,5 +1,6 @@
 <?php
 
+declare(strict_types=1);
 
 namespace Derive;
 
@@ -9,7 +10,6 @@ use BitWasp\Bitcoin\Bitcoin;
 use BitWasp\Bitcoin\Crypto\EcAdapter\EcAdapterFactory;
 use BitWasp\Bitcoin\Crypto\EcAdapter\Impl\PhpEcc\Serializer\Key\PublicKeySerializer;
 use BitWasp\Bitcoin\Crypto\EcAdapter\Key\PublicKeyInterface;
-use BitWasp\Bitcoin\Crypto\Random\Random;
 use BitWasp\Bitcoin\Exceptions\InvalidDerivationException;
 use BitWasp\Bitcoin\Key\Deterministic\HdPrefix\GlobalPrefixConfig;
 use BitWasp\Bitcoin\Key\Deterministic\HdPrefix\NetworkConfig;
@@ -19,308 +19,306 @@ use BitWasp\Bitcoin\Key\Deterministic\Slip132\Slip132;
 use BitWasp\Bitcoin\Key\Factory\HierarchicalKeyFactory;
 use BitWasp\Bitcoin\Key\KeyToScript\KeyToScriptHelper;
 use BitWasp\Bitcoin\Mnemonic\Bip39\Bip39SeedGenerator;
-use BitWasp\Bitcoin\Mnemonic\MnemonicFactory;
+use BitWasp\Bitcoin\Network\NetworkInterface;
 use BitWasp\Bitcoin\Serializer\Key\HierarchicalKey\Base58ExtendedKeySerializer;
 use BitWasp\Bitcoin\Serializer\Key\HierarchicalKey\ExtendedKeySerializer;
 use BitWasp\Bitcoin\Serializer\Key\HierarchicalKey\RawExtendedKeySerializer;
 use BitWasp\Buffertools\Parser;
 use CoinParams\CoinParams;
-use kornrunner\Keccak;
-use Mdanter\Ecc\EccFactory;
-use Mdanter\Ecc\Serializer\Point\UncompressedPointSerializer;
 use Derive\Utils\CashAddress;
 use Derive\Utils\MultiCoinRegistry;
 use Derive\Utils\NetworkCoinFactory;
-//use Derive\Exception;
+use kornrunner\Keccak;
+use Mdanter\Ecc\EccFactory;
+use Mdanter\Ecc\Serializer\Point\UncompressedPointSerializer;
 
 class WalletDerive
 {
-    protected $params;
-    protected HierarchicalKeyFactory $hkf;
+    private array $params;
+    private HierarchicalKeyFactory $hkf;
 
-    public function __construct($params)
+    public function __construct(array $params)
     {
         $this->params = $params;
         $this->hkf = new HierarchicalKeyFactory();
     }
 
-    private function getParams()
+    public function deriveKeys(string $key): array
     {
-        return $this->params;
+        return $this->deriveKeysWorker($key);
     }
 
-    /* Derives child keys/addresses for a given key.
-     */
-    public function derive_keys($key): array
+    private function deriveKeysWorker(string $key): array
     {
-        $params = $this->getParams();
-        return $this->derive_keys_worker($params, $key);
-    }
+        $coin = $this->params['coin'];
+        [$symbol] = explode('-', $coin);
+        $addrs = [];
 
-    private function derive_keys_worker($params, $key)
-    {
-        $coin = $params['coin'];
-        list($symbol) = explode('-', $coin);
-        $addrs = array();
+        $bip44Coin = $this->getCoinBip44($coin);
 
-        $bip44_coin = $this->getCoinBip44($coin);  // bip44/slip-0044 coin identifier
-
-        $networkCoinFactory = new NetworkCoinFactory();
-        $network = $networkCoinFactory->getNetworkCoinInstance($coin);
+        $network = NetworkCoinFactory::getNetworkCoinInstance($coin);
         Bitcoin::setNetwork($network);
-        $key_type = $this->getKeyTypeFromCoinAndKey($coin, $key);
+        $keyType = $this->getKeyTypeFromCoinAndKey($coin, $key);
 
-        $master = $this->fromExtended($coin, $key, $network, $key_type);
+        $master = $this->fromExtended($coin, $key, $network, $keyType);
 
-        $start = $params['startindex'];
-        $end = $params['startindex'] + $params['numderive'];
+        $start = $this->params['startindex'];
+        $end = $start + $this->params['numderive'];
 
-        /*
-         *  ROOT PATH INCLUSION
-         * */
-        if ($params['includeroot']) {
-            $this->derive_key_worker($coin, $symbol, $network, $addrs, $master, $key_type, null, 'm');
+        if ($this->params['includeroot']) {
+            $this->deriveKeyWorker($coin, $symbol, $network, $addrs, $master, $keyType, null, 'm');
         }
 
-//        MyLoggerDeL::getInstance()->log( "Deriving keys", MyLoggerDeL::info );
-        $path_base = is_numeric($params['path'][0]) ? 'm/' . $params['path'] : $params['path'];
+        $pathBase = is_numeric($this->params['path'][0])
+            ? 'm/' . $this->params['path']
+            : $this->params['path'];
 
-        // Allow paths to end with i or i'.
-        // i' specifies that addresses should be hardened.
-        $pparts = explode('/', $path_base);
+        $pparts = explode('/', $pathBase);
 
-        $iter_part = null;
+        $iterPart = null;
         foreach ($pparts as $idx => $pp) {
-            if ($pp[0] == 'x') {
-                $iter_part = $idx;
+            if (($pp[0] ?? '') === 'x') {
+                $iterPart = $idx;
             }
         }
-        if (!$iter_part) {
-//            $iter_part = count($pparts);
+        if ($iterPart === null) {
             $pparts[] = 'x';
         }
-        $path_normal = implode('/', $pparts);
-        $path_mask = str_replace('x', '%d', $path_normal);
-        if (str_contains($path_mask, 'c')) {
-            if (is_int($bip44_coin)) {
-                $path_mask = str_replace('c', $bip44_coin, $path_mask);  // auto-insert bip44 coin-type if requested via 'c'.
-            } else {
-                throw new \Exception("'c' is present in path but Bip44 coin type is undefined for $coin");
-            }
-        }
-        $path_mask = str_replace('v', @$params['path-change'], $path_mask);
-        $path_mask = str_replace('a', @$params['path-account'], $path_mask);
 
-        $period_start = time();
+        $pathNormal = implode('/', $pparts);
+        $pathMask = $this->buildPathMask($pathNormal, $coin, $bip44Coin);
+
         for ($i = $start; $i < $end; $i++) {
-            $path = sprintf($path_mask, $i);
-
-            // $key = $master->derivePath($path);
-            $key = $this->derive_path($master, $path);
-            $this->derive_key_worker($coin, $symbol, $network, $addrs, $key, $key_type, $i, $path);
-
-            if (time() - $period_start > 10) $period_start = time();
+            $path = sprintf($pathMask, $i);
+            $derived = $this->derivePath($master, $path);
+            $this->deriveKeyWorker($coin, $symbol, $network, $addrs, $derived, $keyType, $i, $path);
         }
 
         return $addrs;
     }
 
-    // This function is a replacement for HierarchicalKey::derivePath()
-    // since that function now accepts only relative paths.
-    //
-    // This function is exactly the same except it will detect if first
-    // char is 'm' or 'M' and then will call decodeAbsolute() instead.
-    private function derive_path($key, string $path): HierarchicalKey
+    /**
+     * Replaces path variables (x, c, v, a) with actual values.
+     * Uses per-segment replacement to avoid replacing characters inside numbers.
+     */
+    private function buildPathMask(string $pathNormal, string $coin, mixed $bip44Coin): string
+    {
+        $segments = explode('/', $pathNormal);
+        $pathChange = $this->params['pathChange'];
+        $pathAccount = $this->params['pathAccount'];
+
+        foreach ($segments as &$segment) {
+            $hardened = str_ends_with($segment, "'");
+            $base = $hardened ? substr($segment, 0, -1) : $segment;
+
+            $base = match ($base) {
+                'x' => '%d',
+                'c' => $this->resolveCoinVariable($coin, $bip44Coin),
+                'v' => (string)$pathChange,
+                'a' => (string)$pathAccount,
+                default => $base,
+            };
+
+            $segment = $hardened ? $base . "'" : $base;
+        }
+        unset($segment);
+
+        return implode('/', $segments);
+    }
+
+    private function resolveCoinVariable(string $coin, mixed $bip44Coin): string
+    {
+        if (is_int($bip44Coin)) {
+            return (string)$bip44Coin;
+        }
+        throw new \RuntimeException("'c' is present in path but Bip44 coin type is undefined for $coin");
+    }
+
+    /**
+     * Replacement for HierarchicalKey::derivePath() that supports absolute paths.
+     */
+    private function derivePath(HierarchicalKey $key, string $path): HierarchicalKey
     {
         $sequences = new HierarchicalKeySequence();
-        $is_abs = in_array(@$path[0], ['m', 'M']);
-        $parts = $is_abs ? @$sequences->decodeAbsolute($path)[1] : $sequences->decodeRelative($path);
+        $isAbsolute = in_array($path[0] ?? '', ['m', 'M'], true);
+        $parts = $isAbsolute
+            ? $sequences->decodeAbsolute($path)[1]
+            : $sequences->decodeRelative($path);
         $numParts = count($parts);
 
         for ($i = 0; $i < $numParts; $i++) {
             try {
                 $key = $key->deriveChild($parts[$i]);
             } catch (InvalidDerivationException $e) {
-                if ($i === $numParts - 1) {
-                    throw new InvalidDerivationException($e->getMessage());
-                } else {
-                    throw new InvalidDerivationException("Invalid derivation for non-terminal index: cannot use this path!");
-                }
+                $message = ($i === $numParts - 1)
+                    ? $e->getMessage()
+                    : 'Invalid derivation for non-terminal index: cannot use this path!';
+                throw new InvalidDerivationException($message);
             }
         }
 
         return $key;
     }
 
-    private function derive_key_worker($coin, $symbol, $network, &$addrs, $key, $key_type, $index, $path)
-    {
-
-        if (!$this->networkSupportsKeyType($network, $key_type, $coin)) {
-            throw new \Exception("$key_type extended keys are not supported for $coin");
+    private function deriveKeyWorker(
+        string $coin,
+        string $symbol,
+        NetworkInterface $network,
+        array &$addrs,
+        HierarchicalKey $key,
+        string $keyType,
+        ?int $index,
+        string $path,
+    ): void {
+        if (!$this->networkSupportsKeyType($network, $keyType, $coin)) {
+            throw new \RuntimeException("$keyType extended keys are not supported for $coin");
         }
 
-        $params = $this->getParams();
-        if (method_exists($key, 'getPublicKey')) {
-            $address = strtolower($symbol) == 'eth' ?
-                $address = $this->getEthereumAddress($key->getPublicKey()) :
-                $this->address($key, $network);
-            // (new PayToPubKeyHashAddress($key->getPublicKey()->getPubKeyHash()))->getAddress();
-
-            if (strtolower($symbol) == 'bch' && $params['bch-format'] != 'legacy') {
-                $address = CashAddress::old2new($address);
-            }
-
-            $xprv = $key->isPrivate() ? $this->toExtendedKey($coin, $key, $network, $key_type) : null;
-            $priv_wif = $key->isPrivate() ? $this->serializePrivKey($symbol, $network, $key->getPrivateKey()) : null;
-            $pubkey = $key->getPublicKey()->getHex();
-            $pubkeyhash = $key->getPublicKey()->getPubKeyHash()->getHex();
-            $xpub = $this->toExtendedKey($coin, $key->withoutPrivateKey(), $network, $key_type);
-        } else {
-            throw new \Exception("multisig keys not supported");
+        if (!method_exists($key, 'getPublicKey')) {
+            throw new \RuntimeException('multisig keys not supported');
         }
 
-        $addrs[] = array('xprv' => $xprv,
-            'privkey' => $priv_wif,
+        $address = strtolower($symbol) === 'eth'
+            ? $this->getEthereumAddress($key->getPublicKey())
+            : $this->address($key, $network);
+
+        if (strtolower($symbol) === 'bch' && $this->params['bchFormat'] !== 'legacy') {
+            $address = CashAddress::old2new($address);
+        }
+
+        $xprv = $key->isPrivate() ? $this->toExtendedKey($coin, $key, $network, $keyType) : null;
+        $privWif = $key->isPrivate() ? $this->serializePrivKey($symbol, $network, $key->getPrivateKey()) : null;
+        $pubkey = $key->getPublicKey()->getHex();
+        $pubkeyhash = $key->getPublicKey()->getPubKeyHash()->getHex();
+        $xpub = $this->toExtendedKey($coin, $key->withoutPrivateKey(), $network, $keyType);
+
+        $addrs[] = [
+            'xprv' => $xprv,
+            'privkey' => $privWif,
             'pubkey' => $pubkey,
             'pubkeyhash' => $pubkeyhash,
             'xpub' => $xpub,
             'address' => $address,
             'index' => $index,
-            'path' => $path);
+            'path' => $path,
+        ];
     }
 
-    function serializePrivKey($symbol, $network, $key)
+    private function serializePrivKey(string $symbol, NetworkInterface $network, mixed $key): string
     {
-        $hex = strtolower($symbol) == 'eth';
-        return $hex ? '0x' . $key->getHex() : $key->toWif($network);
+        return strtolower($symbol) === 'eth'
+            ? '0x' . $key->getHex()
+            : $key->toWif($network);
     }
 
-
-    private function address($key, $network)
+    private function address(HierarchicalKey $key, NetworkInterface $network): string
     {
         $addrCreator = new AddressCreator();
         return $key->getAddress($addrCreator)->getAddress($network);
     }
 
-    /*
-     * Determines key type (x,y,Y,z,Z) based on coin/network and a key.
-     */
-    private function getKeyTypeFromCoinAndKey($coin, $key)
+    private function getKeyTypeFromCoinAndKey(string $coin, string $key): string
     {
-//        $nparams = $this->getNetworkParams($coin);
         $prefix = substr($key, 0, 4);
-
-        // Parse the key to obtain prefix bytes.
         $s = new RawExtendedKeySerializer(Bitcoin::getEcAdapter());
         $rkp = $s->fromParser(new Parser(Base58::decodeCheck($key)));
-        $key_prefix = '0x' . $rkp->getPrefix();
+        $keyPrefix = '0x' . $rkp->getPrefix();
 
         $ext = $this->getExtendedPrefixes($coin);
         foreach ($ext as $kt => $info) {
             if (!is_array($info)) {
                 continue;
             }
-            if ($key_prefix == strtolower(@$info['public'])) {
+            if ($keyPrefix === strtolower($info['public'] ?? '')) {
                 return $kt[0];
             }
-            if ($key_prefix == strtolower(@$info['private'])) {
+            if ($keyPrefix === strtolower($info['private'] ?? '')) {
                 return $kt[0];
             }
         }
-        throw new \Exception("Keytype not found for $coin/$prefix");
+        throw new \RuntimeException("Keytype not found for $coin/$prefix");
     }
 
-    private function getKeyTypeFromParams()
-    {
-        $params = $this->getParams();
-        return $params['key-type'];
-    }
-
-    private function getSerializer($coin, $network, $key_type)
+    private function getSerializer(string $coin, NetworkInterface $network, string $keyType): Base58ExtendedKeySerializer
     {
         $adapter = Bitcoin::getEcAdapter();
+        $prefix = $this->getScriptPrefixForKeyType($coin, $keyType);
+        $config = new GlobalPrefixConfig([new NetworkConfig($network, [$prefix])]);
 
-        $prefix = $this->getScriptPrefixForKeyType($coin, $key_type);
-        $config = new GlobalPrefixConfig([new NetworkConfig($network, [$prefix]),]);
-
-        $serializer = new Base58ExtendedKeySerializer(new ExtendedKeySerializer($adapter, $config));
-        return $serializer;
+        return new Base58ExtendedKeySerializer(new ExtendedKeySerializer($adapter, $config));
     }
 
-    private function getSymbolAndNetwork($coin = null)
+    /**
+     * @return array{0: string, 1: string}
+     */
+    private function getSymbolAndNetwork(?string $coin = null): array
     {
-        if (!$coin) {
-            $params = $this->getParams();
-            $coin = $params['coin'];
-        }
-        list($symbol, $network) = explode('-', $this->coinToChain($coin));
-        // normalize values.
+        $coin = $coin ?? $this->params['coin'];
+        [$symbol, $network] = explode('-', $this->coinToChain($coin));
         return [strtoupper($symbol), strtolower($network)];
     }
 
-    private function normalizeCoin($coin): string
+    private function normalizeCoin(string $coin): string
     {
-        list($symbol, $net) = $this->getSymbolAndNetwork($coin);
-        $suffix = $net == 'main' ? '' : '-' . $net;
-        return "$symbol" . $suffix;
+        [$symbol, $net] = $this->getSymbolAndNetwork($coin);
+        $suffix = $net === 'main' ? '' : '-' . $net;
+        return $symbol . $suffix;
     }
 
-    private function getNetworkParams($coin = null)
+    private function getNetworkParams(?string $coin = null): array
     {
-        list($symbol, $net) = $this->getSymbolAndNetwork($coin);
-        return coinparams::get_coin_network($symbol, $net);
+        [$symbol, $net] = $this->getSymbolAndNetwork($coin);
+        return CoinParams::get_coin_network($symbol, $net);
     }
 
-    private function getExtendedPrefixes($coin)
+    private function getExtendedPrefixes(string $coin): array
     {
-        $params = $this->getParams();
         $nparams = $this->getNetworkParams($coin);
-        if (@$params['alt-extended']) {
-            $ext = @$params['alt-extended'];
-            $val = @$nparams['prefixes']['extended']['alternates'][$ext];
+        $altExtended = $this->params['altExtended'] ?? null;
+
+        if ($altExtended) {
+            $val = $nparams['prefixes']['extended']['alternates'][$altExtended] ?? null;
             if (!$val) {
-                throw new \Exception("Invalid value for --alt-extended.  Check coin type");
+                throw new \InvalidArgumentException('Invalid value for altExtended. Check coin type');
             }
         } else {
-            $val = @$nparams['prefixes']['extended'];
+            $val = $nparams['prefixes']['extended'] ?? [];
             unset($val['alternates']);
         }
+
         $val = $val ?: [];
-        // ensure no entries with empty values.
         foreach ($val as $k => $v) {
             if (!is_array($v)) {
                 continue;
             }
-            if (!@$v['public'] || !@$v['private']) {
+            if (empty($v['public']) || empty($v['private'])) {
                 unset($val[$k]);
             }
         }
         return $val;
     }
 
-    private function networkSupportsKeyType($network, $key_type, $coin): bool
+    private function networkSupportsKeyType(NetworkInterface $network, string $keyType, string $coin): bool
     {
-        if ($key_type == 'z') {
+        if ($keyType === 'z') {
             try {
                 $network->getSegwitBech32Prefix();
-            } catch (\Exception $e) {
+            } catch (\Exception) {
                 return false;
             }
         }
 
-        $ext_prefixes = $this->getExtendedPrefixes($coin);
-        $mcr = new MultiCoinRegistry($ext_prefixes);
-        return (bool)$mcr->prefixBytesByKeyType($key_type);
+        $extPrefixes = $this->getExtendedPrefixes($coin);
+        $mcr = new MultiCoinRegistry($extPrefixes);
+        return (bool)$mcr->prefixBytesByKeyType($keyType);
     }
 
-    // key_type is one of x,y,Y,z,Z
-    private function getScriptDataFactoryForKeyType($key_type)
+    private function getScriptDataFactoryForKeyType(string $keyType): mixed
     {
         $helper = new KeyToScriptHelper(Bitcoin::getEcAdapter());
 
-        $params = $this->getParams();
-        $addr_type = $params['addr-type'];
-        switch ($addr_type) {
+        $addrType = $this->params['addrType'];
+        switch ($addrType) {
             case 'legacy':
                 return $helper->getP2pkhFactory();
             case 'p2sh-segwit':
@@ -328,57 +326,37 @@ class WalletDerive
             case 'bech32':
                 return $helper->getP2wpkhFactory();
             case 'auto':
-                break;  // use automatic detection based on key_type
+                break;
             default:
-                throw new \Exception('Invalid value for addr_type');
+                throw new \InvalidArgumentException("Invalid value for addrType: $addrType");
         }
 
-        // note: these calls are adapted from bitwasp slip132.php
-        switch ($key_type) {
-            case 'x':
-                $factory = $helper->getP2pkhFactory();
-                break;
-            case 'X':
-                $factory = $helper->getP2shFactory($helper->getP2pkhFactory());
-                break;  // also xpub.  this case won't work.
-            case 'y':
-                $factory = $helper->getP2shFactory($helper->getP2wpkhFactory());
-                break;
-            case 'Y':
-                $factory = $helper->getP2shP2wshFactory($helper->getP2pkhFactory());
-                break;
-            case 'z':
-                $factory = $helper->getP2wpkhFactory();
-                break;
-            case 'Z':
-                $factory = $helper->getP2wshFactory($helper->getP2pkhFactory());
-                break;
-            default:
-                throw new \Exception("Unknown key type: $key_type");
-        }
-        return $factory;
+        return match ($keyType) {
+            'x' => $helper->getP2pkhFactory(),
+            'X' => $helper->getP2shFactory($helper->getP2pkhFactory()),
+            'y' => $helper->getP2shFactory($helper->getP2wpkhFactory()),
+            'Y' => $helper->getP2shP2wshFactory($helper->getP2pkhFactory()),
+            'z' => $helper->getP2wpkhFactory(),
+            'Z' => $helper->getP2wshFactory($helper->getP2pkhFactory()),
+            default => throw new \InvalidArgumentException("Unknown key type: $keyType"),
+        };
     }
 
-    // key_type is one of x,y,Y,z,Z
-    private function getScriptPrefixForKeyType($coin, $key_type)
+    private function getScriptPrefixForKeyType(string $coin, string $keyType): mixed
     {
-//        list($symbol, $net) = $this->getSymbolAndNetwork($coin);
-
-        $params = $this->getParams();
-        $addr_type = $params['addr-type'];
-
+        $addrType = $this->params['addrType'];
         $adapter = Bitcoin::getEcAdapter();
         $slip132 = new Slip132(new KeyToScriptHelper($adapter));
-        $ext_prefixes = $this->getExtendedPrefixes($coin);
+        $extPrefixes = $this->getExtendedPrefixes($coin);
 
-        if ($addr_type != 'auto') {
-            $ext_prefixes['xpub'] = $ext_prefixes[$key_type . 'pub'];
-            $ext_prefixes['ypub'] = $ext_prefixes[$key_type . 'pub'];
-            $ext_prefixes['zpub'] = $ext_prefixes[$key_type . 'pub'];
+        if ($addrType !== 'auto') {
+            $extPrefixes['xpub'] = $extPrefixes[$keyType . 'pub'];
+            $extPrefixes['ypub'] = $extPrefixes[$keyType . 'pub'];
+            $extPrefixes['zpub'] = $extPrefixes[$keyType . 'pub'];
         }
-        $coinPrefixes = new MultiCoinRegistry($ext_prefixes);
+        $coinPrefixes = new MultiCoinRegistry($extPrefixes);
 
-        switch ($addr_type) {
+        switch ($addrType) {
             case 'legacy':
                 return $slip132->p2pkh($coinPrefixes);
             case 'p2sh-segwit':
@@ -386,129 +364,44 @@ class WalletDerive
             case 'bech32':
                 return $slip132->p2wpkh($coinPrefixes);
             case 'auto':
-                break;  // use automatic detection based on key_type
+                break;
             default:
-                throw new \Exception('Invalid value for addr_type');
+                throw new \InvalidArgumentException("Invalid value for addrType: $addrType");
         }
 
-        return match ($key_type) {
+        return match ($keyType) {
             'x' => $slip132->p2pkh($coinPrefixes),
             'y' => $slip132->p2shP2wpkh($coinPrefixes),
             'z' => $slip132->p2wpkh($coinPrefixes),
-            default => throw new \Exception("Unknown key type: $key_type"),
+            default => throw new \InvalidArgumentException("Unknown key type: $keyType"),
         };
     }
 
-    private function toExtendedKey($coin, $key, $network, $key_type)
+    private function toExtendedKey(string $coin, HierarchicalKey $key, NetworkInterface $network, string $keyType): string
     {
-        $serializer = $this->getSerializer($coin, $network, $key_type);
+        $serializer = $this->getSerializer($coin, $network, $keyType);
         return $serializer->serialize($network, $key);
     }
 
-    private function fromExtended($coin, $extendedKey, $network, $key_type)
+    private function fromExtended(string $coin, string $extendedKey, NetworkInterface $network, string $keyType): HierarchicalKey
     {
-        $serializer = $this->getSerializer($coin, $network, $key_type);
+        $serializer = $this->getSerializer($coin, $network, $keyType);
         return $serializer->parse($network, $extendedKey);
     }
 
-    // converts a bip39 mnemonic string with optional password to an xprv key (string).
-    public function mnemonicToKey($coin, $mnemonic, $key_type, $password = '')
+    public function mnemonicToKey(string $coin, string $mnemonic, string $keyType, ?string $password = ''): string
     {
-        $networkCoinFactory = new NetworkCoinFactory();
-        $network = $networkCoinFactory->getNetworkCoinInstance($coin);
+        $network = NetworkCoinFactory::getNetworkCoinInstance($coin);
         Bitcoin::setNetwork($network);
 
         $seedGenerator = new Bip39SeedGenerator();
-
-        // Derive a seed from mnemonic/password
-        $password = $password === null ? '' : $password;
+        $password = $password ?? '';
         $seed = $seedGenerator->getSeed($mnemonic, $password);
 
-        $scriptFactory = $this->getScriptDataFactoryForKeyType($key_type);
-
+        $scriptFactory = $this->getScriptDataFactoryForKeyType($keyType);
         $bip32 = $this->hkf->fromEntropy($seed, $scriptFactory);
-        return $this->toExtendedKey($coin, $bip32, $network, $key_type);
-    }
 
-    protected function genRandomSeed($password = null)
-    {
-        $params = $this->getParams();
-        $num_bytes = (int)($params['gen-words'] / 0.75);
-
-        // generate random mnemonic
-        $random = new Random();
-        $bip39 = MnemonicFactory::bip39();
-        $entropy = $random->bytes($num_bytes);
-        $mnemonic = $bip39->entropyToMnemonic($entropy);
-
-        // generate seed and master priv key from mnemonic
-        $seedGenerator = new Bip39SeedGenerator();
-        $pw = $password == null ? '' : $password;
-        $seed = $seedGenerator->getSeed($mnemonic, $pw);
-
-        $data = [
-            'seed' => $seed,
-            'mnemonic' => $mnemonic,
-        ];
-
-        return $data;
-    }
-
-    protected function genKeysFromSeed($coin, $seedinfo)
-    {
-        $networkCoinFactory = new NetworkCoinFactory();
-        $network = $networkCoinFactory->getNetworkCoinInstance($coin);
-        Bitcoin::setNetwork($network);
-
-        // type   purpose
-        $key_types = ['x' => 44,
-            'y' => 49,
-            'z' => 84,
-//                      'Y'  => ??,    // multisig
-//                      'Z'  => ??,    // multisig
-        ];
-        $keys = [];
-
-        $rows = [];
-        foreach ($key_types as $key_type => $purpose) {
-            if (!$this->networkSupportsKeyType($network, $key_type, $coin)) {
-                // $data[$key_type] = null;
-                continue;
-            }
-            $row = ['coin' => $this->normalizeCoin($coin),
-                'seed' => $seedinfo['seed']->getHex(),
-                'mnemonic' => $seedinfo['mnemonic']
-            ];
-
-            $k = $key_type;
-            $pf = '';
-
-            $scriptFactory = $this->getScriptDataFactoryForKeyType($key_type);  // xpub
-
-            $xkey = $this->hkf->fromEntropy($seedinfo['seed'], $scriptFactory);
-            $masterkey = $this->toExtendedKey($coin, $xkey, $network, $key_type);
-            $row[$pf . 'root-key'] = $masterkey;
-
-            // determine bip32 path for ext keys, which requires a bip44 ID for coin.
-            $bip32path = $this->getCoinBip44ExtKeyPathPurpose($coin, $purpose);
-            if ($bip32path) {
-                // derive extended priv/pub keys.
-                // $prv = $xkey->derivePath($bip32path);
-                $prv = $this->derive_path($xkey, $bip32path);
-                $pub = $prv->withoutPrivateKey();
-                $row[$pf . 'path'] = $bip32path;
-                $row['xprv'] = $this->toExtendedKey($coin, $prv, $network, $key_type);
-                $row['xpub'] = $this->toExtendedKey($coin, $pub, $network, $key_type);
-                $row['comment'] = null;
-            } else {
-                $row[$pf . 'path'] = null;
-                $row['xprv'] = null;
-                $row['xpub'] = null;
-                $row['comment'] = "Bip44 ID is missing for this coin, so extended keys not derived.";
-            }
-            $rows[] = $row;
-        }
-        return $rows;
+        return $this->toExtendedKey($coin, $bip32, $network, $keyType);
     }
 
     public function coinToChain(string $coin): string
@@ -516,67 +409,63 @@ class WalletDerive
         return str_contains($coin, '-') ? $coin : "$coin-main";
     }
 
-    public function getCoinBip44($coin)
+    public function getCoinBip44(string $coin): mixed
     {
         $map = CoinParams::get_all_coins();
-        list($symbol, $net) = explode('-', $this->coinToChain($coin));
-        return @$map[strtoupper($symbol)][$net]['prefixes']['bip44'];
+        [$symbol, $net] = explode('-', $this->coinToChain($coin));
+        return $map[strtoupper($symbol)][$net]['prefixes']['bip44'] ?? null;
     }
 
-    public function getCoinBip44ExtKeyPathPurpose($coin, $purpose): ?string
+    public function getCoinBip44ExtKeyPathPurpose(string $coin, int $purpose): ?string
     {
         $bip44 = $this->getCoinBip44($coin);
         return is_int($bip44) ? sprintf("m/%s'/%d'/0'/0", $purpose, $bip44) : null;
     }
 
-    public function getBip32PurposeByKeyType(int $key_type): int
+    public function getBip32PurposeByKeyType(string $keyType): int
     {
-        return ['x' => 44,
+        return match ($keyType) {
+            'x' => 44,
             'y' => 49,
             'z' => 84,
-            'Y' => 141,
-            'Z' => 141,
-        ][$key_type];
-    }
-
-    public function getCoinBip44ExtKeyPathPurposeByKeyType($coin, $key_type): ?string
-    {
-        $purpose = $this->getBip32PurposeByKeyType($key_type);
-        return $this->getCoinBip44ExtKeyPathPurpose($coin, $purpose);
+            'Y', 'Z' => 141,
+            default => throw new \InvalidArgumentException("Unknown key type: $keyType"),
+        };
     }
 
     private function getEthereumAddress(PublicKeyInterface $publicKey): string
     {
-        static $pubkey_serializer = null;
-        static $point_serializer = null;
-        if (!$pubkey_serializer) {
+        static $pubkeySerializer = null;
+        static $pointSerializer = null;
+
+        if (!$pubkeySerializer) {
             $adapter = EcAdapterFactory::getPhpEcc(Bitcoin::getMath(), Bitcoin::getGenerator());
-            $pubkey_serializer = new PublicKeySerializer($adapter);
-            $point_serializer = new UncompressedPointSerializer(EccFactory::getAdapter());
+            $pubkeySerializer = new PublicKeySerializer($adapter);
+            $pointSerializer = new UncompressedPointSerializer(EccFactory::getAdapter());
         }
 
-        $pubKey = $pubkey_serializer->parse($publicKey->getBuffer());
+        $pubKey = $pubkeySerializer->parse($publicKey->getBuffer());
         $point = $pubKey->getPoint();
-        $upk = $point_serializer->serialize($point);
+        $upk = $pointSerializer->serialize($point);
         $upk = hex2bin(substr($upk, 2));
 
         $keccak = Keccak::hash($upk, 256);
-        $eth_address_lower = strtolower(substr($keccak, -40));
+        $ethAddressLower = strtolower(substr($keccak, -40));
 
-        $hash = Keccak::hash($eth_address_lower, 256);
-        $eth_address = '';
+        $hash = Keccak::hash($ethAddressLower, 256);
+        $ethAddress = '';
         for ($i = 0; $i < 40; $i++) {
-            // the nth letter should be uppercase if the nth digit of casemap is 1
-            $char = substr($eth_address_lower, $i, 1);
+            $char = $ethAddressLower[$i];
 
-            if (ctype_digit($char))
-                $eth_address .= $char;
-            else if ('0' <= $hash[$i] && $hash[$i] <= '7')
-                $eth_address .= strtolower($char);
-            else
-                $eth_address .= strtoupper($char);
+            if (ctype_digit($char)) {
+                $ethAddress .= $char;
+            } elseif ($hash[$i] >= '0' && $hash[$i] <= '7') {
+                $ethAddress .= strtolower($char);
+            } else {
+                $ethAddress .= strtoupper($char);
+            }
         }
 
-        return '0x' . $eth_address;
+        return '0x' . $ethAddress;
     }
 }
