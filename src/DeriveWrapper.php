@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Derive;
 
+use BitWasp\Bitcoin\Base58;
+use BitWasp\Buffertools\Buffer;
+use CoinParams\CoinParams;
 use Derive\Utils\PathPresets;
 
 class DeriveWrapper
@@ -75,6 +78,93 @@ class DeriveWrapper
         }
 
         return self::formatResult($result, $format);
+    }
+
+    /**
+     * Converts an extended key between types (x/y/z) by replacing the version prefix bytes.
+     * E.g. xpub -> zpub, xprv -> zprv, zpub -> ypub, etc.
+     *
+     * Note: this only changes the serialization format. The underlying key data stays the same.
+     * The resulting key will only produce correct addresses if the original key was derived
+     * from the appropriate BIP path (BIP44 for x, BIP49 for y, BIP84 for z).
+     */
+    public static function convertKey(
+        string  $key,
+        string  $toType,
+        string  $coin = 'btc',
+        ?string $altExtended = null,
+    ): string {
+        if (!in_array($toType, self::ALLOWED_KEY_TYPES, true)) {
+            throw new \InvalidArgumentException(
+                sprintf('toType must be one of: [%s]', implode(',', self::ALLOWED_KEY_TYPES))
+            );
+        }
+
+        $prefixes = self::getExtendedPrefixesStatic($coin, $altExtended);
+        $decoded = Base58::decodeCheck($key);
+        $hex = $decoded->getHex();
+        $sourcePrefix = '0x' . substr($hex, 0, 8);
+
+        $isPublic = null;
+        foreach ($prefixes as $kt => $info) {
+            if (!is_array($info)) {
+                continue;
+            }
+            if (strtolower($sourcePrefix) === strtolower($info['public'] ?? '')) {
+                $isPublic = true;
+                break;
+            }
+            if (strtolower($sourcePrefix) === strtolower($info['private'] ?? '')) {
+                $isPublic = false;
+                break;
+            }
+        }
+
+        if ($isPublic === null) {
+            throw new \InvalidArgumentException("Cannot determine key type for the given key and coin '$coin'");
+        }
+
+        $targetPrefixKey = $toType . 'pub';
+        $targetInfo = $prefixes[$targetPrefixKey] ?? null;
+
+        if (!$targetInfo || empty($targetInfo['public']) || empty($targetInfo['private'])) {
+            throw new \InvalidArgumentException("Key type '$toType' is not supported for coin '$coin'");
+        }
+
+        $targetPrefix = $isPublic ? $targetInfo['public'] : $targetInfo['private'];
+        $targetPrefixHex = str_replace('0x', '', strtolower($targetPrefix));
+
+        $newHex = $targetPrefixHex . substr($hex, 8);
+
+        return Base58::encodeCheck(Buffer::hex($newHex));
+    }
+
+    private static function getExtendedPrefixesStatic(string $coin, ?string $altExtended): array
+    {
+        $chain = str_contains($coin, '-') ? $coin : "$coin-main";
+        [$symbol, $net] = explode('-', $chain);
+        $nparams = CoinParams::get_coin_network(strtoupper($symbol), strtolower($net));
+
+        if ($altExtended) {
+            $val = $nparams['prefixes']['extended']['alternates'][$altExtended] ?? null;
+            if (!$val) {
+                throw new \InvalidArgumentException("Invalid value for altExtended. Check coin type");
+            }
+        } else {
+            $val = $nparams['prefixes']['extended'] ?? [];
+            unset($val['alternates']);
+        }
+
+        $val = $val ?: [];
+        foreach ($val as $k => $v) {
+            if (!is_array($v)) {
+                continue;
+            }
+            if (empty($v['public']) || empty($v['private'])) {
+                unset($val[$k]);
+            }
+        }
+        return $val;
     }
 
     private static function filterColumns(array $rows, string $cols): array
